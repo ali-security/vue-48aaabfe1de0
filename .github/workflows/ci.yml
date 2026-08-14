@@ -1,24 +1,24 @@
 name: 'ci'
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
+  workflow_dispatch: {}
 jobs:
   unit-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [21, 18]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v2
+        uses: pnpm/action-setup@v4
 
-      - name: Set node version to 18
-        uses: actions/setup-node@v2
+      - name: Set node version to ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: ${{ matrix.node-version }}
           cache: 'pnpm'
 
       - run: pnpm install
@@ -28,16 +28,21 @@ jobs:
 
   ssr-sfc-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [21, 18]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v2
+        uses: pnpm/action-setup@v4
 
-      - name: Set node version to 18
-        uses: actions/setup-node@v2
+      - name: Set node version to ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: ${{ matrix.node-version }}
           cache: 'pnpm'
 
       - run: pnpm install
@@ -50,16 +55,21 @@ jobs:
 
   e2e-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [21, 18]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v2
+        uses: pnpm/action-setup@v4
 
-      - name: Set node version to 18
-        uses: actions/setup-node@v2
+      - name: Set node version to ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: ${{ matrix.node-version }}
           cache: 'pnpm'
 
       - run: pnpm install
@@ -72,16 +82,21 @@ jobs:
 
   type-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [21, 18]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v2
+        uses: pnpm/action-setup@v4
 
-      - name: Set node version to 18
-        uses: actions/setup-node@v2
+      - name: Set node version to ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: ${{ matrix.node-version }}
           cache: 'pnpm'
 
       - run: pnpm install
@@ -91,3 +106,42 @@ jobs:
 
       - name: Run type declaration tests
         run: pnpm run test:types
+
+  pack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set node version to 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'pnpm'
+
+      - run: pnpm install
+
+      # Full release build, exactly as scripts/release.js runs it before publishing.
+      # The compiler-sfc rollup bundle needs more than the default V8 heap.
+      - name: Build all dist bundles
+        run: pnpm run build
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+
+      - name: Build type declarations
+        run: pnpm run build:types
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+
+      - name: Pack npm tarball
+        run: pnpm pack
+
+      - name: Upload npm tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-tarball
+          path: vue-*.tgz
+          if-no-files-found: error

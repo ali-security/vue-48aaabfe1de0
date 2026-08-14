@@ -21,7 +21,15 @@ module.exports = function (config) {
     esbuild: {
       define
     },
-    browsers: ['ChromeHeadless'],
+    browsers: ['ChromeHeadlessNoSandbox'],
+    customLaunchers: {
+      // Modern CI kernels restrict unprivileged user namespaces, so Chromium's
+      // SUID sandbox cannot initialize ("No usable sandbox!" from zygote_host).
+      ChromeHeadlessNoSandbox: {
+        base: 'ChromeHeadless',
+        flags: ['--no-sandbox', '--disable-setuid-sandbox']
+      }
+    },
     plugins: ['karma-jasmine', 'karma-esbuild', 'karma-chrome-launcher'],
     singleRun: true
   })

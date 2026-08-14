@@ -11,7 +11,7 @@ const featureFlags = require('./feature-flags')
 const banner =
   '/*!\n' +
   ` * Vue.js v${version}\n` +
-  ` * (c) 2014-${new Date().getFullYear()} Evan You\n` +
+  ` * (c) 2014-2023 Evan You\n` +
   ' * Released under the MIT License.\n' +
   ' */'
 
