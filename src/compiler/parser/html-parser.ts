@@ -31,7 +31,6 @@ const conditionalComment = /^<!\[/
 
 // Special Elements (can contain anything)
 export const isPlainTextElement = makeMap('script,style,textarea', true)
-const reCache = {}
 
 const decodingMap = {
   '&lt;': '<',
@@ -53,6 +52,30 @@ const shouldIgnoreFirstNewline = (tag, html) =>
 function decodeAttr(value, shouldDecodeNewlines) {
   const re = shouldDecodeNewlines ? encodedAttrWithNewLines : encodedAttr
   return value.replace(re, match => decodingMap[match])
+}
+
+// Locate the end tag of a plain text element (script/style/textarea) with a
+// linear scan. This used to be done with a regular expression of the shape
+// /([\s\S]*?)(<\/tag[^>]*>)/i, whose leading lazy group makes the engine
+// re-scan the rest of the template from every starting offset, so an element
+// that is never closed costs quadratic time (CVE-2024-9506).
+// Matches the old regex exactly: case-insensitive tag name, then everything up
+// to and including the first `>` that follows it.
+function matchStackedTagEnd(html, stackedTag) {
+  const tagLength = stackedTag.length
+  let start = html.indexOf('</')
+  while (start >= 0) {
+    const nameEnd = start + 2 + tagLength
+    if (html.slice(start + 2, nameEnd).toLowerCase() === stackedTag) {
+      const gt = html.indexOf('>', nameEnd)
+      // no `>` left after the first candidate means every later candidate,
+      // which starts even further in, has no `>` either
+      if (gt < 0) return null
+      return { index: start, endTag: html.slice(start, gt + 1) }
+    }
+    start = html.indexOf('</', start + 2)
+  }
+  return null
 }
 
 export interface HTMLParserOptions extends CompilerOptions {
@@ -167,14 +190,12 @@ export function parseHTML(html, options: HTMLParserOptions) {
     } else {
       let endTagLength = 0
       const stackedTag = lastTag.toLowerCase()
-      const reStackedTag =
-        reCache[stackedTag] ||
-        (reCache[stackedTag] = new RegExp(
-          '([\\s\\S]*?)(</' + stackedTag + '[^>]*>)',
-          'i'
-        ))
-      const rest = html.replace(reStackedTag, function (all, text, endTag) {
-        endTagLength = endTag.length
+      const stackedTagEnd = matchStackedTagEnd(html, stackedTag)
+      let rest = html
+      if (stackedTagEnd) {
+        endTagLength = stackedTagEnd.endTag.length
+        rest = html.slice(stackedTagEnd.index + endTagLength)
+        let text = html.slice(0, stackedTagEnd.index)
         if (!isPlainTextElement(stackedTag) && stackedTag !== 'noscript') {
           text = text
             .replace(/<!\--([\s\S]*?)-->/g, '$1') // #7298
@@ -186,8 +207,7 @@ export function parseHTML(html, options: HTMLParserOptions) {
         if (options.chars) {
           options.chars(text)
         }
-        return ''
-      })
+      }
       index += html.length - rest.length
       html = rest
       parseEndTag(stackedTag, index - endTagLength, index)

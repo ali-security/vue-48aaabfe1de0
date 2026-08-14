@@ -961,6 +961,57 @@ describe('parser', () => {
     expect(comment.children[0].text).toBe('<!--comment-->')
   })
 
+  it('parse content in plain text elements closed by a mixed case end tag', () => {
+    const options = extend({}, baseOptions)
+
+    const textarea = parse('<textarea>foo</TEXTAREA>', options)
+    expect(textarea.tag).toBe('textarea')
+    expect(textarea.children.length).toBe(1)
+    expect(textarea.children[0].text).toBe('foo')
+
+    // `[^>]*>` allows anything up to the first `>` after the tag name
+    const spaced = parse('<textarea>bar</textarea >', options)
+    expect(spaced.tag).toBe('textarea')
+    expect(spaced.children.length).toBe(1)
+    expect(spaced.children[0].text).toBe('bar')
+  })
+
+  it('parse content in script tags containing <', () => {
+    const options = extend({}, baseOptions)
+    const ast = parse('<script>let a = 1 < 2</script>', options)
+    expect(ast.tag).toBe('script')
+    expect(ast.children[0].text).toBe('let a = 1 < 2')
+    expect(
+      'Templates should only be responsible for mapping the state'
+    ).toHaveBeenWarned()
+  })
+
+  // CVE-2024-9506: locating the end tag of a plain text element used to rely
+  // on /([\s\S]*?)(<\/tag[^>]*>)/i, which costs quadratic time when the
+  // element is never closed. This is the shape of the advisory's PoC.
+  it('parse an unclosed plain text element in linear time', () => {
+    const options = extend({}, baseOptions)
+    const filler = '<'.repeat(200000)
+    const t0 = Date.now()
+    const ast = parse(
+      `<div>Hello, world!<script>${filler}</textarea></div>`,
+      options
+    )
+    expect(Date.now() - t0).toBeLessThan(2000)
+    expect(ast.tag).toBe('div')
+    // the <script> is forbidden so it is dropped, leaving the leading text
+    // plus everything the unclosed element swallowed
+    expect(ast.children.length).toBe(2)
+    expect(ast.children[0].text).toBe('Hello, world!')
+    expect(ast.children[1].text.length).toBe(
+      filler.length + '</textarea></div>'.length
+    )
+    expect(
+      'Templates should only be responsible for mapping the state'
+    ).toHaveBeenWarned()
+    expect('tag <div> has no matching end tag').toHaveBeenWarned()
+  })
+
   // #5526
   it('should not decode text in script tags', () => {
     const options = extend({}, baseOptions)
